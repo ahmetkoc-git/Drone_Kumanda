@@ -18,21 +18,47 @@ void getADCValues(uint16_t *XAxisValue, uint16_t *YAxisValue,uint16_t *XxAxisVal
 	*XxAxisValue = adcValues[2];
 	*YyAxisValue = adcValues[3];
 }
-void ConvertToAngle(int8_t *roll, int8_t *pitch){///yaw ve altitude icin degerler yollanacak.
-    int RealValueToRoll = adcValues[0] - 1970;
+
+
+
+/*roll ve pitch degerleri direkt kullanilacak yaw ve altitude degerleri
+ * saniyelik cinsden kullanilacak ex: 2m/sn veya 120 derece /sn
+ */
+void ConvertToAngle(int8_t *roll, int8_t *pitch, int8_t *yaw, int8_t *altitude,uint16_t x,uint16_t y,uint16_t xx,uint16_t yy){///yaw ve altitude icin degerler yollanacak.
+    int RealValueToRoll = adcValues[0] - x;//x y xx yy getadcvaluesden alınan ilk degerler.
 	*roll = 30*RealValueToRoll/2020;
 	if (*roll >= 30) {
 		*roll=30;
 	}else if (*roll<=-30) {
 		*roll = -30;
 	}
-	int RealValueToPitch = adcValues[1]-1970;
+
+	int RealValueToPitch = adcValues[1] - y;
 	*pitch = 30*RealValueToPitch/2020;
 	if (*pitch >=30) {
 		*pitch =30;
 	}else if (*pitch <= -30) {
 		*pitch = -30;
 	}
+
+	int RealValueToYaw = adcValues[2] - xx;
+	*yaw = (120*RealValueToYaw/2020) * -1;
+	if (*yaw >= 120) {
+		*yaw=120;
+	}else if (*yaw<=-120) {
+		*yaw = -120;
+	}
+
+	int RealValueToAltitude =adcValues[3] - yy;
+	*altitude = 3*RealValueToAltitude/2000;
+	if (*altitude >= 3) {
+		*altitude=3;
+	}else if (*altitude<=-3) {
+		*altitude = -3;
+	}
+
+
+
 }
 
 
