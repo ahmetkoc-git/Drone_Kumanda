@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "joystick.h"
 #include "nrf24l01p.h"
+#include "ssd1306.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,6 +46,8 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
+I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
@@ -59,6 +63,13 @@ uint16_t Yy;
 ///////////////////NRF24L01P PVS///////////////////////////////
 uint8_t Status_NRF;
 uint8_t SendBuffer[4];
+uint32_t RF_Timer;
+const uint32_t RF_Period_ms = 20;
+///////////////////SSD1306 PVS/////////////////////////////////
+char line[32];
+uint32_t OLED_Timer;
+const uint32_t OLED_Period_ms = 150;
+//////////////////////////////////////////////////////////////
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,6 +78,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -84,7 +96,59 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	////////////////NRF/////////////////////////////////////////////////
+	void RF_Transmit(){
+	      SendBuffer[0]=ROLL_joystick;
+	      SendBuffer[1]=PITCH_joystick;
+	      SendBuffer[2]=YAW_joystick;
+	      SendBuffer[3]=ALTITUDE_joystick;
 
+	      Status_NRF = nrf24l01p_get_status();
+	      if (Status_NRF & (1<<0)) {
+	    	  nrf24l01p_flush_tx_fifo();
+		}
+	      else if (Status_NRF & (1<<4)) {                // MAX_RT
+	          nrf24l01p_clear_max_rt();
+	          nrf24l01p_flush_tx_fifo();
+	      }
+	      else
+	      {
+	          nrf24l01p_tx_transmit(SendBuffer);
+
+	          Status_NRF = nrf24l01p_get_status();
+	          if (Status_NRF & (1<<5)) {            // TX_DS (başarılı)
+	              nrf24l01p_clear_tx_ds();
+	          }
+	          if (Status_NRF & (1<<4)) {            // MAX_RT (başarısız)
+	              nrf24l01p_clear_max_rt();
+	              nrf24l01p_flush_tx_fifo();
+	          }
+	      }
+	}
+	////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////SSD306////////////////////////////////////////////////
+	void SSD1306_UpdateFlightData(){
+		          ssd1306_Fill(Black);
+
+		          ssd1306_SetCursor(0, 0);
+		          sprintf(line, "ROLL: %d", ROLL_joystick);
+		          ssd1306_WriteString(line, Font_7x10, White);
+
+		          ssd1306_SetCursor(0, 12);
+		          sprintf(line, "PITCH: %d", PITCH_joystick);
+		          ssd1306_WriteString(line, Font_7x10, White);
+
+		          ssd1306_SetCursor(0, 24);
+		          sprintf(line, "YAW: %d", YAW_joystick);
+		          ssd1306_WriteString(line, Font_7x10, White);
+
+		          ssd1306_SetCursor(0, 36);
+		          sprintf(line, "ALTITUDE: %d", ALTITUDE_joystick);
+		          ssd1306_WriteString(line, Font_7x10, White);
+
+		          ssd1306_UpdateScreen(&hi2c1);
+
+	}
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -108,14 +172,22 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   MX_SPI1_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 ///////////////////JOYSTICK CODES//////////////////////////////
 JoystickInit(&hadc1);
 HAL_Delay(50);//cop degerler gelmesin joystickler hazir olsun.
 getADCValues(&X, &Y,&Xx,&Yy);
-
+//////////////////////////////////////////////////////////////
 ////////////////////NRF24L01P CODES////////////////////////////
-nrf24l01p_tx_init(2, _1Mbps);
+nrf24l01p_tx_init(2500, 1);
+HAL_Delay(50);
+////////////////////////////////////////////////////////////////
+////////////////////SSD1306 CODES//////////////////////////////
+ssd1306_Init(&hi2c1);
+HAL_Delay(50);
+ssd1306_Fill(Black);
+/////////////////////////////////////////////////////////////
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -125,18 +197,25 @@ nrf24l01p_tx_init(2, _1Mbps);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  uint32_t now = HAL_GetTick();
 	  ////////////////////JOYSTICK CODES////////////////////////////
       ConvertToAngle(&ROLL_joystick, &PITCH_joystick, &YAW_joystick, &ALTITUDE_joystick,X,Y,Xx,Yy);
-
+      /////////////////////////////////////////////////////////////////////////////////////////////
       ////////////////////NRF24L01P CODES/////////////////////////////////////////////////////////
-      Status_NRF = nrf24l01p_get_status();
-      SendBuffer[0]=(uint8_t)ROLL_joystick;
-      SendBuffer[1]=(uint8_t)PITCH_joystick;
-      SendBuffer[2]=(uint8_t)YAW_joystick;
-      SendBuffer[3]=(uint8_t)ALTITUDE_joystick;
-      for (int i = 0; i <= 3; ++i) {//ayri bir rf kodu olusturup txfifoyu temizleme kodu eklenecek.
-    	  nrf24l01p_tx_transmit(&SendBuffer[i]);
+      if (now - RF_Timer >= RF_Period_ms) {
+    	    RF_Timer = now;
+    	    RF_Transmit();
 	}
+
+      ////////////////////////////////////////////////////////////////////////////////////////////
+      ///////////////////SSD1306 CODES///////////////////////////////////////////////////////////
+      if (now - OLED_Timer >= OLED_Period_ms) {
+    	  OLED_Timer = now;
+    	  SSD1306_UpdateFlightData();
+	}
+      ////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
   }
   /* USER CODE END 3 */
@@ -260,6 +339,40 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 400000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief SPI1 Initialization Function
   * @param None
   * @retval None
@@ -330,7 +443,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, ce_Pin|nss_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(ce_GPIO_Port, ce_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(nss_GPIO_Port, nss_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : ce_Pin nss_Pin */
   GPIO_InitStruct.Pin = ce_Pin|nss_Pin;
