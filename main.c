@@ -64,11 +64,11 @@ uint16_t Yy;
 uint8_t Status_NRF;
 uint8_t SendBuffer[4];
 uint32_t RF_Timer;
-const uint32_t RF_Period_ms = 20;
+const uint32_t RF_Period_ms = 150;
 ///////////////////SSD1306 PVS/////////////////////////////////
 char line[32];
 uint32_t OLED_Timer;
-const uint32_t OLED_Period_ms = 150;
+const uint32_t OLED_Period_ms = 100;
 //////////////////////////////////////////////////////////////
 /* USER CODE END PV */
 
@@ -86,45 +86,36 @@ static void MX_I2C1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* USER CODE END 0 */
+void RF_Transmit(){
+	SendBuffer[0]=ROLL_joystick;
+	      	      SendBuffer[1]=PITCH_joystick;
+	      	      SendBuffer[2]=YAW_joystick;
+	      	      SendBuffer[3]=ALTITUDE_joystick;
 
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
+	      	      Status_NRF = nrf24l01p_get_status();
+	      	      if (Status_NRF & (1<<0)) {
+	      	    	  nrf24l01p_flush_tx_fifo();
+	      	    	 Status_NRF = nrf24l01p_get_status();
+	      		}
+	      	      else if (Status_NRF & (1<<4)) {                // MAX_RT
+	      	          nrf24l01p_clear_max_rt();
+	      	          nrf24l01p_flush_tx_fifo();
+	      	        Status_NRF = nrf24l01p_get_status();
+	      	      }
+	      	      else
+	      	      {
+	      	          nrf24l01p_tx_transmit(SendBuffer);
 
-  /* USER CODE BEGIN 1 */
-	////////////////NRF/////////////////////////////////////////////////
-	void RF_Transmit(){
-	      SendBuffer[0]=ROLL_joystick;
-	      SendBuffer[1]=PITCH_joystick;
-	      SendBuffer[2]=YAW_joystick;
-	      SendBuffer[3]=ALTITUDE_joystick;
-
-	      Status_NRF = nrf24l01p_get_status();
-	      if (Status_NRF & (1<<0)) {
-	    	  nrf24l01p_flush_tx_fifo();
-		}
-	      else if (Status_NRF & (1<<4)) {                // MAX_RT
-	          nrf24l01p_clear_max_rt();
-	          nrf24l01p_flush_tx_fifo();
-	      }
-	      else
-	      {
-	          nrf24l01p_tx_transmit(SendBuffer);
-
-	          Status_NRF = nrf24l01p_get_status();
-	          if (Status_NRF & (1<<5)) {            // TX_DS (başarılı)
-	              nrf24l01p_clear_tx_ds();
-	          }
-	          if (Status_NRF & (1<<4)) {            // MAX_RT (başarısız)
-	              nrf24l01p_clear_max_rt();
-	              nrf24l01p_flush_tx_fifo();
-	          }
-	      }
-	}
+	      	          Status_NRF = nrf24l01p_get_status();
+	      	          if (Status_NRF & (1<<5)) {            // TX_DS (başarılı)
+	      	              nrf24l01p_clear_tx_ds();
+	      	          }
+	      	          if (Status_NRF & (1<<4)) {            // MAX_RT (başarısız)
+	      	              nrf24l01p_clear_max_rt();
+	      	              nrf24l01p_flush_tx_fifo();
+	      	          }
+	      	      }
+}
 	////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////SSD306////////////////////////////////////////////////
 	void SSD1306_UpdateFlightData(){
@@ -146,9 +137,30 @@ int main(void)
 		          sprintf(line, "ALTITUDE: %d", ALTITUDE_joystick);
 		          ssd1306_WriteString(line, Font_7x10, White);
 
+		          ssd1306_SetCursor(0, 48);
+		          sprintf(line, "CONNECTION: %d", Status_NRF);
+		          ssd1306_WriteString(line, Font_7x10, White);
+
+
 		          ssd1306_UpdateScreen(&hi2c1);
 
+
+
+
+
 	}
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+
+  /* USER CODE BEGIN 1 */
+	////////////////NRF/////////////////////////////////////////////////
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -180,14 +192,17 @@ HAL_Delay(50);//cop degerler gelmesin joystickler hazir olsun.
 getADCValues(&X, &Y,&Xx,&Yy);
 //////////////////////////////////////////////////////////////
 ////////////////////NRF24L01P CODES////////////////////////////
-nrf24l01p_tx_init(2500, 1);
-HAL_Delay(50);
+nrf24l01p_tx_init(2500, _250kbps);
+HAL_Delay(200);
 ////////////////////////////////////////////////////////////////
 ////////////////////SSD1306 CODES//////////////////////////////
 ssd1306_Init(&hi2c1);
 HAL_Delay(50);
 ssd1306_Fill(Black);
 /////////////////////////////////////////////////////////////
+RF_Timer = HAL_GetTick();
+OLED_Timer = HAL_GetTick();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -197,25 +212,15 @@ ssd1306_Fill(Black);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  uint32_t now = HAL_GetTick();
 	  ////////////////////JOYSTICK CODES////////////////////////////
       ConvertToAngle(&ROLL_joystick, &PITCH_joystick, &YAW_joystick, &ALTITUDE_joystick,X,Y,Xx,Yy);
       /////////////////////////////////////////////////////////////////////////////////////////////
       ////////////////////NRF24L01P CODES/////////////////////////////////////////////////////////
-      if (now - RF_Timer >= RF_Period_ms) {
-    	    RF_Timer = now;
-    	    RF_Transmit();
-	}
-
+      	      RF_Transmit();
       ////////////////////////////////////////////////////////////////////////////////////////////
       ///////////////////SSD1306 CODES///////////////////////////////////////////////////////////
-      if (now - OLED_Timer >= OLED_Period_ms) {
-    	  OLED_Timer = now;
-    	  SSD1306_UpdateFlightData();
-	}
+      	    SSD1306_UpdateFlightData();
       ////////////////////////////////////////////////////////////////////////////////////////////
-
-
 
   }
   /* USER CODE END 3 */
@@ -237,7 +242,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL5;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -247,9 +254,9 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
@@ -395,7 +402,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

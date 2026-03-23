@@ -25,23 +25,23 @@ void getADCValues(uint16_t *XAxisValue, uint16_t *YAxisValue,uint16_t *XxAxisVal
  * saniyelik cinsden kullanilacak ex: 2m/sn veya 120 derece /sn
  */
 void ConvertToAngle(int8_t *roll, int8_t *pitch, int8_t *yaw, int8_t *altitude,uint16_t x,uint16_t y,uint16_t xx,uint16_t yy){///yaw ve altitude icin degerler yollanacak.
-    int RealValueToRoll = adcValues[0] - x;//x y xx yy getadcvaluesden alınan ilk degerler.
-	*roll = 30*RealValueToRoll/2020;
+    int RealValueToRoll = adcValues[1] - y;//x y xx yy getadcvaluesden alınan ilk degerler.
+	*roll = (-1) * 30*RealValueToRoll/2020;//donanim kaynakli -1 geldi. roll ve pitch degisti.
 	if (*roll >= 30) {
 		*roll=30;
 	}else if (*roll<=-30) {
 		*roll = -30;
 	}
 
-	int RealValueToPitch = adcValues[1] - y;
-	*pitch = 30*RealValueToPitch/2020;
+	int RealValueToPitch = adcValues[0] - x;//roll ve pitch degerlerim degisti donanim kaynakli. donanim kaynakli -1 geldi.
+	*pitch =(-1) * 30*RealValueToPitch/2020;
 	if (*pitch >=30) {
 		*pitch =30;
 	}else if (*pitch <= -30) {
 		*pitch = -30;
 	}
 
-	int RealValueToYaw = adcValues[2] - xx;
+	int RealValueToYaw = adcValues[3] - yy;
 	*yaw = (120*RealValueToYaw/2020) * -1;
 	if (*yaw >= 120) {
 		*yaw=120;
@@ -49,7 +49,7 @@ void ConvertToAngle(int8_t *roll, int8_t *pitch, int8_t *yaw, int8_t *altitude,u
 		*yaw = -120;
 	}
 
-	int RealValueToAltitude =adcValues[3] - yy;
+	int RealValueToAltitude =adcValues[2] - xx;
 	*altitude = 3*RealValueToAltitude/2000;
 	if (*altitude >= 3) {
 		*altitude=3;

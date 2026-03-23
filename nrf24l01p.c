@@ -116,6 +116,9 @@ void nrf24l01p_rx_receive(uint8_t* rx_payload)
 void nrf24l01p_tx_transmit(uint8_t* tx_payload)
 {
     nrf24l01p_write_tx_fifo(tx_payload);
+    ce_high();
+       HAL_Delay(1); // en az 10µs, 1ms güvenli
+       ce_low();
 }
 
 void nrf24l01p_tx_irq()
